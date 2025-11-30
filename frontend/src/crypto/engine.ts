@@ -14,7 +14,6 @@ export interface KeyPair {
 
 export class CryptoEngine {
   private identityKeyPair: KeyPair | null = null
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private deviceId: string
 
   constructor(deviceId: string) {
@@ -23,9 +22,11 @@ export class CryptoEngine {
 
   /**
    * Initialize or load identity key pair
+   * Uses device-specific ID to support multiple users on same browser
    */
   async init(): Promise<void> {
-    const stored = await db.identityKeys.get('identity')
+    const keyId = `identity_${this.deviceId}`
+    const stored = await db.identityKeys.get(keyId)
     if (stored) {
       this.identityKeyPair = {
         publicKey: stored.publicKey,
@@ -33,8 +34,8 @@ export class CryptoEngine {
       }
     } else {
       this.identityKeyPair = nacl.box.keyPair()
-      await db.identityKeys.add({
-        id: 'identity',
+      await db.identityKeys.put({
+        id: keyId,
         publicKey: this.identityKeyPair.publicKey,
         privateKey: this.identityKeyPair.secretKey,
       })
@@ -51,13 +52,20 @@ export class CryptoEngine {
 
   /**
    * Generate pre-keys
+   * Uses device-specific IDs to support multiple users
    */
   async generatePreKeys(count: number = 100): Promise<any[]> {
+    // Clear existing pre-keys for this device first
+    const startId = `${this.deviceId}_0`
+    const endId = `${this.deviceId}_${count - 1}`
+    await db.preKeys.where('id').between(startId, endId, true, true).delete()
+    
     const preKeys = []
     for (let i = 0; i < count; i++) {
       const keyPair = nacl.box.keyPair()
-      await db.preKeys.add({
-        id: i,
+      const keyId = `${this.deviceId}_${i}`
+      await db.preKeys.put({
+        id: keyId,
         keyPair: {
           pubKey: keyPair.publicKey,
           privKey: keyPair.secretKey,
@@ -73,13 +81,15 @@ export class CryptoEngine {
 
   /**
    * Generate signed pre-key (simplified - no actual signing in this demo)
+   * Uses device-specific ID
    */
   async generateSignedPreKey(): Promise<any> {
     const keyPair = nacl.box.keyPair()
     const signature = 'mock-signature' // In production, sign with identity key
+    const keyId = `${this.deviceId}_signed`
     
-    await db.preKeys.add({
-      id: -1, // Special ID for signed pre-key
+    await db.preKeys.put({
+      id: keyId,
       keyPair: {
         pubKey: keyPair.publicKey,
         privKey: keyPair.secretKey,

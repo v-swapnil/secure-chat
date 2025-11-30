@@ -7,7 +7,7 @@ export interface StoredIdentityKey {
 }
 
 export interface StoredPreKey {
-  id: number
+  id: string // Changed from number to string to support device-specific IDs
   keyPair: {
     pubKey: Uint8Array
     privKey: Uint8Array

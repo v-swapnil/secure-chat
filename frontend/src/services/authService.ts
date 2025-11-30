@@ -25,7 +25,14 @@ export interface LoginResponse {
 
 export const authService = {
   async register(data: RegisterRequest): Promise<{ userId: string; message: string }> {
-    const response = await api.post('/auth/register', data)
+    const response = await api.post('/auth/register', {
+      email: data.email,
+      phone: data.phone,
+      password: data.password,
+      identity_key: data.identityKey,
+      device_id: data.deviceId,
+      registration_id: data.registrationId,
+    })
     return response.data
   },
 
@@ -35,7 +42,12 @@ export const authService = {
   },
 
   async login(data: LoginRequest): Promise<LoginResponse> {
-    const response = await api.post('/auth/login', data)
+    const response = await api.post('/auth/login', {
+      email: data.email,
+      phone: data.phone,
+      password: data.password,
+      device_id: data.deviceId,
+    })
     return response.data
   },
 
@@ -46,9 +58,9 @@ export const authService = {
 
   async uploadPreKeys(deviceId: string, signedPreKey: any, oneTimePreKeys: any[]): Promise<void> {
     await api.post('/keys/prekeys', {
-      deviceId,
-      signedPreKey,
-      oneTimePreKeys,
+      device_id: deviceId,
+      signed_prekey: signedPreKey,
+      onetime_prekeys: oneTimePreKeys,
     })
   },
 
