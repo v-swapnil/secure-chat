@@ -5,7 +5,7 @@ import (
     "time"
 
     "github.com/gofrs/uuid"
-    "github.com/gorilla/websocket"
+    "github.com/gofiber/websocket/v2"
 )
 
 type Connection struct {

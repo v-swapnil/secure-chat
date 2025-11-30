@@ -5,6 +5,7 @@ import (
 
     "github.com/gofrs/uuid"
     "gorm.io/gorm"
+    "gorm.io/gorm/clause"
 
     "github.com/securechat/backend/internal/models"
 )
@@ -45,7 +46,7 @@ func (s *PreKeyService) AddOneTimePreKeys(userID uuid.UUID, keys [][]byte) error
 func (s *PreKeyService) ConsumeOneTimePreKey(userID uuid.UUID) (*models.OneTimePreKey, error) {
     var p models.OneTimePreKey
     tx := s.DB.Begin()
-    if err := tx.Clauses(gorm.Locking{Strength: "UPDATE"}).Where("user_id = ? AND used = false", userID).Order("created_at asc").First(&p).Error; err != nil {
+    if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("user_id = ? AND used = false", userID).Order("created_at asc").First(&p).Error; err != nil {
         tx.Rollback()
         return nil, err
     }
