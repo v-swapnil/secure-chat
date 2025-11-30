@@ -30,12 +30,20 @@ type RegisterFormData = z.infer<typeof registerSchema>
 type VerifyFormData = z.infer<typeof verifySchema>
 
 export default function Register() {
-  const [step, setStep] = useState<'register' | 'verify'>('register')
+  const [step, setStep] = useState<'register' | 'verify' | 'uploading-keys'>('register')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [deviceId] = useState(() => uuidv4())
+  const [deviceId] = useState(() => {
+    // Check localStorage first, generate if not exists
+    const stored = localStorage.getItem('device_id')
+    if (stored) return stored
+    const newId = uuidv4()
+    localStorage.setItem('device_id', newId)
+    return newId
+  })
   const [registeredEmail, setRegisteredEmail] = useState('')
   const [registeredPassword, setRegisteredPassword] = useState('')
+  const [tempToken, setTempToken] = useState('')
   const navigate = useNavigate()
   const { login } = useAuthStore()
 
@@ -60,28 +68,19 @@ export default function Register() {
     setError('')
 
     try {
-      const crypto = new CryptoEngine(deviceId)
-      await crypto.init()
-
-      const identityKey = crypto.getPublicIdentityKey()
-      const signedPreKey = await crypto.generateSignedPreKey()
-      const oneTimePreKeys = await crypto.generatePreKeys(50)
-
+      // Step 1: Register with email/password only (no keys yet)
       await authService.register({
         email: data.email,
         password: data.password,
-        identityKey,
-        deviceId,
-        registrationId: Math.floor(Math.random() * 1000000),
       })
-
-      await authService.uploadPreKeys(deviceId, signedPreKey, oneTimePreKeys)
 
       setRegisteredEmail(data.email)
       setRegisteredPassword(data.password)
       setStep('verify')
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Registration failed')
+      console.error('Registration error:', err)
+      const errorMsg = err.response?.data?.error || err.message || 'Registration failed'
+      setError(`Registration failed: ${errorMsg}`)
     } finally {
       setLoading(false)
     }
@@ -92,22 +91,39 @@ export default function Register() {
     setError('')
 
     try {
-      await authService.verify(data.code, registeredEmail)
+      // Step 2: Verify OTP and get temp_token
+      const verifyResponse = await authService.verify(data.code, registeredEmail)
+      setTempToken(verifyResponse.temp_token)
+      setStep('uploading-keys')
 
-      const response = await authService.login({
-        email: registeredEmail,
-        password: registeredPassword,
-        deviceId,
-      })
-
+      // Step 3: Generate keys locally (NEVER sent to server except public keys)
       const crypto = new CryptoEngine(deviceId)
       await crypto.init()
       const identityKey = crypto.getPublicIdentityKey()
+      const signedPreKey = await crypto.generateSignedPreKey()
+      const oneTimePreKeys = await crypto.generatePreKeys(50)
+
+      // Step 4: Complete registration with temp_token + public keys
+      const response = await authService.completeRegistration({
+        tempToken: verifyResponse.temp_token,
+        identityKey,
+        deviceId,
+        registrationId: Math.floor(Math.random() * 1000000),
+      })
+
+      // Store token and user_id
+      localStorage.setItem('auth_token', response.token)
+      localStorage.setItem('user_id', response.userId)
+
+      // Upload prekeys with authentication
+      await authService.uploadPreKeys(deviceId, signedPreKey, oneTimePreKeys)
 
       login(response.userId, response.token, identityKey, deviceId)
       navigate('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Verification failed')
+      console.error('Verification error:', err)
+      const errorMsg = err.response?.data?.error || err.message || 'Verification failed'
+      setError(`Verification failed: ${errorMsg}`)
     } finally {
       setLoading(false)
     }
@@ -119,11 +135,18 @@ export default function Register() {
         <CardHeader className="space-y-1">
           <CardTitle className="text-3xl font-bold text-center">Secure Chat</CardTitle>
           <CardDescription className="text-center">
-            {step === 'register' ? 'Create your account' : 'Verify your email'}
+            {step === 'register' && 'Create your account'}
+            {step === 'verify' && 'Verify your email'}
+            {step === 'uploading-keys' && 'Setting up encryption...'}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {step === 'register' ? (
+          {step === 'uploading-keys' ? (
+            <div className="flex flex-col items-center justify-center space-y-4 py-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              <p className="text-sm text-muted-foreground">Generating encryption keys...</p>
+            </div>
+          ) : step === 'register' ? (
             <form onSubmit={handleRegisterSubmit(onRegisterSubmit)} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>

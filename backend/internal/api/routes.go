@@ -19,7 +19,9 @@ func SetupRoutes(router *mux.Router, database *db.DB, hub *websocket.Hub) {
 	authHandler := NewAuthHandler(database)
 	api.HandleFunc("/auth/register", authHandler.Register).Methods("POST", "OPTIONS")
 	api.HandleFunc("/auth/verify", authHandler.Verify).Methods("POST", "OPTIONS")
+	api.HandleFunc("/auth/complete-registration", authHandler.CompleteRegistration).Methods("POST", "OPTIONS")
 	api.HandleFunc("/auth/login", authHandler.Login).Methods("POST", "OPTIONS")
+	api.HandleFunc("/auth/verify-login", authHandler.VerifyLogin).Methods("POST", "OPTIONS")
 
 	// Key management routes (requires auth)
 	keyHandler := NewKeyHandler(database)

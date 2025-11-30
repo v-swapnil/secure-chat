@@ -5,6 +5,10 @@ export interface RegisterRequest {
   email?: string
   phone?: string
   password: string
+}
+
+export interface CompleteRegistrationRequest {
+  tempToken: string
   identityKey: string
   deviceId: string
   registrationId: number
@@ -14,6 +18,12 @@ export interface LoginRequest {
   email?: string
   phone?: string
   password: string
+}
+
+export interface VerifyLoginRequest {
+  email?: string
+  phone?: string
+  code: string
   deviceId: string
 }
 
@@ -23,12 +33,30 @@ export interface LoginResponse {
   expiresAt: string
 }
 
+export interface VerifyLoginResponse extends LoginResponse {
+  deviceExists: boolean
+  isNewDevice: boolean
+  registeredDevices?: string[]
+}
+
 export const authService = {
   async register(data: RegisterRequest): Promise<{ userId: string; message: string }> {
     const response = await api.post('/auth/register', {
       email: data.email,
       phone: data.phone,
       password: data.password,
+    })
+    return response.data
+  },
+
+  async verify(code: string, email?: string, phone?: string): Promise<{ message: string; temp_token: string; user_id: string; expires_at: string }> {
+    const response = await api.post('/auth/verify', { code, email, phone })
+    return response.data
+  },
+
+  async completeRegistration(data: CompleteRegistrationRequest): Promise<LoginResponse> {
+    const response = await api.post('/auth/complete-registration', {
+      temp_token: data.tempToken,
       identity_key: data.identityKey,
       device_id: data.deviceId,
       registration_id: data.registrationId,
@@ -36,16 +64,20 @@ export const authService = {
     return response.data
   },
 
-  async verify(code: string, email?: string, phone?: string): Promise<{ message: string }> {
-    const response = await api.post('/auth/verify', { code, email, phone })
-    return response.data
-  },
-
-  async login(data: LoginRequest): Promise<LoginResponse> {
+  async login(data: LoginRequest): Promise<{ message: string; user_id: string }> {
     const response = await api.post('/auth/login', {
       email: data.email,
       phone: data.phone,
       password: data.password,
+    })
+    return response.data
+  },
+
+  async verifyLogin(data: VerifyLoginRequest): Promise<VerifyLoginResponse> {
+    const response = await api.post('/auth/verify-login', {
+      email: data.email,
+      phone: data.phone,
+      code: data.code,
       device_id: data.deviceId,
     })
     return response.data
