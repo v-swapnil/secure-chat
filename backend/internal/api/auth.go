@@ -173,6 +173,12 @@ func (h *AuthHandler) CompleteRegistration(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Validate identity key format
+	if err := validateIdentityKey(req.IdentityKey); err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid identity key: %v", err))
+		return
+	}
+
 	// Update user with identity key
 	query := `UPDATE users SET identity_key = $1 WHERE id = $2`
 	_, err = h.db.Conn().Exec(query, req.IdentityKey, userID)
@@ -438,4 +444,20 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write(response)
+}
+
+// validateIdentityKey validates that a base64-encoded identity key is valid
+func validateIdentityKey(keyB64 string) error {
+	// Decode base64
+	keyBytes, err := base64.StdEncoding.DecodeString(keyB64)
+	if err != nil {
+		return fmt.Errorf("invalid base64 encoding: %w", err)
+	}
+
+	// NaCl identity keys (Ed25519 public keys) should be 32 bytes
+	if len(keyBytes) != 32 {
+		return fmt.Errorf("invalid key length: expected 32 bytes, got %d", len(keyBytes))
+	}
+
+	return nil
 }

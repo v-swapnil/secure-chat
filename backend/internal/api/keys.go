@@ -2,13 +2,16 @@ package api
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
 	"github.com/secret-project/backend/internal/db"
 	"github.com/secret-project/backend/internal/models"
+	"golang.org/x/crypto/nacl/sign"
 )
 
 type KeyHandler struct {
@@ -56,6 +59,29 @@ func (h *KeyHandler) UploadPreKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get user's identity key for signature verification
+	var identityKeyB64 string
+	query := `SELECT identity_key FROM users WHERE id = $1`
+	err := h.db.Conn().QueryRow(query, userID).Scan(&identityKeyB64)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to get identity key")
+		return
+	}
+
+	// Validate and verify signed pre-key
+	if err := validateAndVerifySignedPreKey(req.SignedPreKey, identityKeyB64); err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid signed pre-key: %v", err))
+		return
+	}
+
+	// Validate one-time pre-keys format
+	for i, prekey := range req.OneTimePreKeys {
+		if err := validatePublicKey(prekey.PublicKey); err != nil {
+		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid one-time pre-key at index %d: %v", i, err))
+			return
+		}
+	}
+
 	// Insert signed pre-key
 	signedQuery := `
 		INSERT INTO prekeys (user_id, device_id, key_id, public_key, signature, is_signed)
@@ -63,7 +89,7 @@ func (h *KeyHandler) UploadPreKeys(w http.ResponseWriter, r *http.Request) {
 		ON CONFLICT (user_id, device_id, key_id) 
 		DO UPDATE SET public_key = $4, signature = $5
 	`
-	_, err := h.db.Conn().Exec(signedQuery, userID, req.DeviceID, req.SignedPreKey.KeyID,
+	_, err = h.db.Conn().Exec(signedQuery, userID, req.DeviceID, req.SignedPreKey.KeyID,
 		req.SignedPreKey.PublicKey, req.SignedPreKey.Signature)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to upload signed pre-key")
@@ -159,4 +185,75 @@ func (h *KeyHandler) GetPreKeyBundle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, bundle)
+}
+
+// validatePublicKey validates that a base64-encoded public key is valid
+func validatePublicKey(keyB64 string) error {
+	// Decode base64
+	keyBytes, err := base64.StdEncoding.DecodeString(keyB64)
+	if err != nil {
+		return fmt.Errorf("invalid base64 encoding: %w", err)
+	}
+
+	// NaCl public keys should be 32 bytes
+	if len(keyBytes) != 32 {
+		return fmt.Errorf("invalid key length: expected 32 bytes, got %d", len(keyBytes))
+	}
+
+	return nil
+}
+
+// validateAndVerifySignedPreKey validates the signed pre-key and verifies its signature
+func validateAndVerifySignedPreKey(signedPreKey models.PreKey, identityKeyB64 string) error {
+	// Validate public key format
+	if err := validatePublicKey(signedPreKey.PublicKey); err != nil {
+		return fmt.Errorf("invalid public key: %w", err)
+	}
+
+	// Validate signature format
+	if signedPreKey.Signature == nil {
+		return fmt.Errorf("signature is required for signed pre-key")
+	}
+
+	signatureBytes, err := base64.StdEncoding.DecodeString(*signedPreKey.Signature)
+	if err != nil {
+		return fmt.Errorf("invalid signature base64 encoding: %w", err)
+	}
+
+	// NaCl signatures should be 64 bytes
+	if len(signatureBytes) != 64 {
+		return fmt.Errorf("invalid signature length: expected 64 bytes, got %d", len(signatureBytes))
+	}
+
+	// Decode identity key
+	identityKeyBytes, err := base64.StdEncoding.DecodeString(identityKeyB64)
+	if err != nil {
+		return fmt.Errorf("invalid identity key encoding: %w", err)
+	}
+
+	if len(identityKeyBytes) != 32 {
+		return fmt.Errorf("invalid identity key length: expected 32 bytes, got %d", len(identityKeyBytes))
+	}
+
+	// Decode pre-key public key
+	prekeyBytes, err := base64.StdEncoding.DecodeString(signedPreKey.PublicKey)
+	if err != nil {
+		return fmt.Errorf("invalid prekey encoding: %w", err)
+	}
+
+	// Verify signature: signature must be valid for prekeyBytes signed with identityKey
+	var identityKey [32]byte
+	var signature [64]byte
+	copy(identityKey[:], identityKeyBytes)
+	copy(signature[:], signatureBytes)
+
+	// Use NaCl's sign.Open to verify the signature
+	// Note: sign.Open expects the message to be appended to signature
+	messageWithSig := append(signature[:], prekeyBytes...)
+	_, ok := sign.Open(nil, messageWithSig, &identityKey)
+	if !ok {
+		return fmt.Errorf("signature verification failed: signature does not match identity key")
+	}
+
+	return nil
 }

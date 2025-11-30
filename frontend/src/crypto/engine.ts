@@ -80,13 +80,21 @@ export class CryptoEngine {
   }
 
   /**
-   * Generate signed pre-key (simplified - no actual signing in this demo)
+   * Generate signed pre-key
+   * Signs the pre-key public key with the identity private key
    * Uses device-specific ID
    */
   async generateSignedPreKey(): Promise<any> {
+    if (!this.identityKeyPair) throw new Error('Identity key not initialized')
+    
     const keyPair = nacl.box.keyPair()
-    const signature = 'mock-signature' // In production, sign with identity key
     const keyId = `${this.deviceId}_signed`
+    
+    // Sign the public key with identity private key
+    const signature = nacl.sign.detached(
+      keyPair.publicKey,
+      this.identityKeyPair.secretKey
+    )
     
     await db.preKeys.put({
       id: keyId,
@@ -99,7 +107,7 @@ export class CryptoEngine {
     return {
       keyId: -1,
       publicKey: encodeBase64(keyPair.publicKey),
-      signature,
+      signature: encodeBase64(signature),
       isSigned: true,
     }
   }
