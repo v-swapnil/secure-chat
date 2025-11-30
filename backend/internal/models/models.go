@@ -1,129 +1,125 @@
 package models
-package models
 
 import (
-	"time"
+"time"
 
-	"github.com/google/uuid"
+"github.com/google/uuid"
 )
 
 type User struct {
-	ID            uuid.UUID `json:"id"`
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-}	PartnerSignedPreKey *string `json:"partner_signed_prekey,omitempty"`	PartnerEphemeralKey *string `json:"partner_ephemeral_key,omitempty"`	PartnerAnonymousID *uuid.UUID `json:"partner_anonymous_id,omitempty"`	MatchID      *uuid.UUID `json:"match_id,omitempty"`	Matched      bool      `json:"matched"`type MatchStatusResponse struct {}	EphemeralSignedPreKey string   `json:"ephemeral_signed_prekey"`	EphemeralIdentityKey  string   `json:"ephemeral_identity_key"`	CategoryTags          []string `json:"category_tags"`type JoinMatchQueueRequest struct {}	OneTimePreKeys []PreKey `json:"onetime_prekeys"`	SignedPreKey   PreKey   `json:"signed_prekey"`	DeviceID       string   `json:"device_id"`type UploadPreKeysRequest struct {}	RegistrationID   int       `json:"registration_id"`	OneTimePreKey    *PreKey   `json:"onetime_prekey,omitempty"`	SignedPreKey     PreKey    `json:"signed_prekey"`	IdentityKey      string    `json:"identity_key"`	DeviceID         string    `json:"device_id"`	UserID           uuid.UUID `json:"user_id"`type PreKeyBundle struct {}	ExpiresAt time.Time `json:"expires_at"`	UserID uuid.UUID `json:"user_id"`	Token  string    `json:"token"`type LoginResponse struct {}	DeviceID string  `json:"device_id"`	Password string  `json:"password"`	Phone    *string `json:"phone,omitempty"`	Email    *string `json:"email,omitempty"`type LoginRequest struct {}	Code  string  `json:"code"`	Phone *string `json:"phone,omitempty"`	Email *string `json:"email,omitempty"`type VerifyRequest struct {}	RegistrationID int  `json:"registration_id"`	DeviceID    string  `json:"device_id"`	IdentityKey string  `json:"identity_key"`	Password    string  `json:"password"`	Phone       *string `json:"phone,omitempty"`	Email       *string `json:"email,omitempty"`type RegisterRequest struct {// Request/Response models}	EndedAt      *time.Time `json:"ended_at,omitempty"`	MatchedAt    time.Time  `json:"matched_at"`	Anonymous2ID uuid.UUID  `json:"anonymous2_id"`	Anonymous1ID uuid.UUID  `json:"anonymous1_id"`	User2ID      *uuid.UUID `json:"user2_id,omitempty"`	User1ID      *uuid.UUID `json:"user1_id,omitempty"`	ID           uuid.UUID  `json:"id"`type ActiveMatch struct {}	JoinedAt              time.Time `json:"joined_at"`	EphemeralSignedPreKey string    `json:"ephemeral_signed_prekey"`	EphemeralIdentityKey  string    `json:"ephemeral_identity_key"`	CategoryTags          []string  `json:"category_tags"`	AnonymousID           uuid.UUID `json:"anonymous_id"`	UserID                *uuid.UUID `json:"user_id,omitempty"`	ID                    uuid.UUID `json:"id"`type MatchQueueEntry struct {}	CreatedAt    time.Time `json:"created_at"`	ExpiresAt    time.Time `json:"expires_at"`	SessionToken string    `json:"session_token"`	UserID       uuid.UUID `json:"user_id"`	ID           uuid.UUID `json:"id"`type Session struct {}	CreatedAt  time.Time `json:"created_at"`	IsUsed     bool      `json:"is_used"`	IsSigned   bool      `json:"is_signed"`	Signature  *string   `json:"signature,omitempty"`	PublicKey  string    `json:"public_key"`	KeyID      int       `json:"key_id"`	DeviceID   string    `json:"device_id"`	UserID     uuid.UUID `json:"user_id"`	ID         int       `json:"id"`type PreKey struct {}	LastSeen       time.Time `json:"last_seen"`	CreatedAt      time.Time `json:"created_at"`	RegistrationID int       `json:"registration_id"`	DeviceID       string    `json:"device_id"`	UserID         uuid.UUID `json:"user_id"`	ID             uuid.UUID `json:"id"`type Device struct {}	UpdatedAt     time.Time `json:"updated_at"`	CreatedAt     time.Time `json:"created_at"`	TwoFASecret   string    `json:"-"`	TwoFAEnabled  bool      `json:"two_fa_enabled"`	IdentityKey   string    `json:"identity_key"`	PasswordHash  string    `json:"-"`	Phone         *string   `json:"phone,omitempty"`	Email         *string   `json:"email,omitempty"`
+ID            uuid.UUID  `json:"id"`
+Email         *string    `json:"email,omitempty"`
+Phone         *string    `json:"phone,omitempty"`
+PasswordHash  string     `json:"-"`
+IdentityKey   string     `json:"identity_key"`
+TwoFAEnabled  bool       `json:"two_fa_enabled"`
+TwoFASecret   string     `json:"-"`
+CreatedAt     time.Time  `json:"created_at"`
+UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+type Device struct {
+ID             uuid.UUID `json:"id"`
+UserID         uuid.UUID `json:"user_id"`
+DeviceID       string    `json:"device_id"`
+RegistrationID int       `json:"registration_id"`
+CreatedAt      time.Time `json:"created_at"`
+LastSeen       time.Time `json:"last_seen"`
+}
+
+type PreKey struct {
+ID         int       `json:"id"`
+UserID     uuid.UUID `json:"user_id"`
+DeviceID   string    `json:"device_id"`
+KeyID      int       `json:"key_id"`
+PublicKey  string    `json:"public_key"`
+Signature  *string   `json:"signature,omitempty"`
+IsSigned   bool      `json:"is_signed"`
+IsUsed     bool      `json:"is_used"`
+CreatedAt  time.Time `json:"created_at"`
+}
+
+type Session struct {
+ID           uuid.UUID `json:"id"`
+UserID       uuid.UUID `json:"user_id"`
+SessionToken string    `json:"session_token"`
+ExpiresAt    time.Time `json:"expires_at"`
+CreatedAt    time.Time `json:"created_at"`
+}
+
+type MatchQueueEntry struct {
+ID                    uuid.UUID  `json:"id"`
+UserID                *uuid.UUID `json:"user_id,omitempty"`
+AnonymousID           uuid.UUID  `json:"anonymous_id"`
+CategoryTags          []string   `json:"category_tags"`
+EphemeralIdentityKey  string     `json:"ephemeral_identity_key"`
+EphemeralSignedPreKey string     `json:"ephemeral_signed_prekey"`
+JoinedAt              time.Time  `json:"joined_at"`
+}
+
+type ActiveMatch struct {
+ID           uuid.UUID  `json:"id"`
+User1ID      *uuid.UUID `json:"user1_id,omitempty"`
+User2ID      *uuid.UUID `json:"user2_id,omitempty"`
+Anonymous1ID uuid.UUID  `json:"anonymous1_id"`
+Anonymous2ID uuid.UUID  `json:"anonymous2_id"`
+MatchedAt    time.Time  `json:"matched_at"`
+EndedAt      *time.Time `json:"ended_at,omitempty"`
+}
+
+type RegisterRequest struct {
+Email          *string `json:"email,omitempty"`
+Phone          *string `json:"phone,omitempty"`
+Password       string  `json:"password"`
+IdentityKey    string  `json:"identity_key"`
+DeviceID       string  `json:"device_id"`
+RegistrationID int     `json:"registration_id"`
+}
+
+type VerifyRequest struct {
+Email *string `json:"email,omitempty"`
+Phone *string `json:"phone,omitempty"`
+Code  string  `json:"code"`
+}
+
+type LoginRequest struct {
+Email    *string `json:"email,omitempty"`
+Phone    *string `json:"phone,omitempty"`
+Password string  `json:"password"`
+DeviceID string  `json:"device_id"`
+}
+
+type LoginResponse struct {
+Token     string    `json:"token"`
+UserID    uuid.UUID `json:"user_id"`
+ExpiresAt time.Time `json:"expires_at"`
+}
+
+type PreKeyBundle struct {
+UserID           uuid.UUID `json:"user_id"`
+DeviceID         string    `json:"device_id"`
+IdentityKey      string    `json:"identity_key"`
+SignedPreKey     PreKey    `json:"signed_prekey"`
+OneTimePreKey    *PreKey   `json:"onetime_prekey,omitempty"`
+RegistrationID   int       `json:"registration_id"`
+}
+
+type UploadPreKeysRequest struct {
+DeviceID       string   `json:"device_id"`
+SignedPreKey   PreKey   `json:"signed_prekey"`
+OneTimePreKeys []PreKey `json:"onetime_prekeys"`
+}
+
+type JoinMatchQueueRequest struct {
+CategoryTags          []string `json:"category_tags"`
+EphemeralIdentityKey  string   `json:"ephemeral_identity_key"`
+EphemeralSignedPreKey string   `json:"ephemeral_signed_prekey"`
+}
+
+type MatchStatusResponse struct {
+Matched             bool       `json:"matched"`
+MatchID             *uuid.UUID `json:"match_id,omitempty"`
+PartnerAnonymousID  *uuid.UUID `json:"partner_anonymous_id,omitempty"`
+PartnerEphemeralKey *string    `json:"partner_ephemeral_key,omitempty"`
+PartnerSignedPreKey *string    `json:"partner_signed_prekey,omitempty"`
+}

@@ -1,45 +1,45 @@
 package api
-package api
 
 import (
+	"net/http"
+
 	"github.com/gorilla/mux"
 	"github.com/secret-project/backend/internal/db"
 	"github.com/secret-project/backend/internal/websocket"
 )
 
+func SetupRoutes(router *mux.Router, database *db.DB, hub *websocket.Hub) {
+	// Health check
+	router.HandleFunc("/health", HealthCheckHandler).Methods("GET")
 
+	// API v1
+	api := router.PathPrefix("/api/v1").Subrouter()
 
+	// Auth routes
+	authHandler := NewAuthHandler(database)
+	api.HandleFunc("/auth/register", authHandler.Register).Methods("POST")
+	api.HandleFunc("/auth/verify", authHandler.Verify).Methods("POST")
+	api.HandleFunc("/auth/login", authHandler.Login).Methods("POST")
 
+	// Key management routes (requires auth)
+	keyHandler := NewKeyHandler(database)
+	api.HandleFunc("/keys/identity/{userId}", keyHandler.GetIdentityKey).Methods("GET")
+	api.HandleFunc("/keys/prekeys", AuthMiddleware(keyHandler.UploadPreKeys)).Methods("POST")
+	api.HandleFunc("/keys/prekeys/{userId}", keyHandler.GetPreKeyBundle).Methods("GET")
 
+	// Matching routes
+	matchHandler := NewMatchHandler(database)
+	api.HandleFunc("/match/queue", AuthMiddleware(matchHandler.JoinQueue)).Methods("POST")
+	api.HandleFunc("/match/status", AuthMiddleware(matchHandler.GetStatus)).Methods("GET")
+	api.HandleFunc("/match/queue", AuthMiddleware(matchHandler.LeaveQueue)).Methods("DELETE")
 
+	// WebSocket route
+	wsHandler := NewWebSocketHandler(hub, database)
+	router.HandleFunc("/ws", wsHandler.HandleWebSocket)
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-}	w.Write([]byte(`{"status":"ok"}`))	w.WriteHeader(http.StatusOK)	w.Header().Set("Content-Type", "application/json")func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {}	router.HandleFunc("/ws", wsHandler.HandleWebSocket)	wsHandler := NewWebSocketHandler(hub, database)	// WebSocket route	api.HandleFunc("/match/queue", AuthMiddleware(matchHandler.LeaveQueue)).Methods("DELETE")	api.HandleFunc("/match/status", AuthMiddleware(matchHandler.GetStatus)).Methods("GET")	api.HandleFunc("/match/queue", AuthMiddleware(matchHandler.JoinQueue)).Methods("POST")	matchHandler := NewMatchHandler(database)	// Matching routes	api.HandleFunc("/keys/prekeys/{userId}", keyHandler.GetPreKeyBundle).Methods("GET")	api.HandleFunc("/keys/prekeys", AuthMiddleware(keyHandler.UploadPreKeys)).Methods("POST")	api.HandleFunc("/keys/identity/{userId}", keyHandler.GetIdentityKey).Methods("GET")	keyHandler := NewKeyHandler(database)	// Key management routes (requires auth)	api.HandleFunc("/auth/login", authHandler.Login).Methods("POST")	api.HandleFunc("/auth/verify", authHandler.Verify).Methods("POST")	api.HandleFunc("/auth/register", authHandler.Register).Methods("POST")	authHandler := NewAuthHandler(database)	// Auth routes	api := router.PathPrefix("/api/v1").Subrouter()	// API v1	router.HandleFunc("/health", HealthCheckHandler).Methods("GET")	// Health checkfunc SetupRoutes(router *mux.Router, database *db.DB, hub *websocket.Hub) {
+func HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status":"ok"}`))
+}
