@@ -77,7 +77,7 @@ func (h *KeyHandler) UploadPreKeys(w http.ResponseWriter, r *http.Request) {
 	// Validate one-time pre-keys format
 	for i, prekey := range req.OneTimePreKeys {
 		if err := validatePublicKey(prekey.PublicKey); err != nil {
-		respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid one-time pre-key at index %d: %v", i, err))
+			respondWithError(w, http.StatusBadRequest, fmt.Sprintf("Invalid one-time pre-key at index %d: %v", i, err))
 			return
 		}
 	}
