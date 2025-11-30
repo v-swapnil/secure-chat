@@ -37,11 +37,11 @@ func main() {
 	// Setup router
 	router := mux.NewRouter()
 
+	// CORS middleware - must be applied before routes
+	router.Use(corsMiddleware)
+
 	// API routes
 	api.SetupRoutes(router, database, hub)
-
-	// CORS middleware
-	router.Use(corsMiddleware)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -58,10 +58,8 @@ func main() {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
-		if allowedOrigins == "" {
-			allowedOrigins = "*"
-		}
 
+		// Set the specific origin from env variable
 		w.Header().Set("Access-Control-Allow-Origin", allowedOrigins)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
