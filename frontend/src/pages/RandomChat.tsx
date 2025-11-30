@@ -4,7 +4,7 @@ import { useAuthStore } from '../stores/authStore'
 import { useChatStore } from '../stores/chatStore'
 import { authService } from '../services/authService'
 import { wsService } from '../services/websocketService'
-import { CryptoEngine, hashQuestionnaireAnswers } from '../crypto/engine'
+import { SecureCryptoEngine, hashQuestionnaireAnswers } from '../crypto/engineSecure'
 import type { Message } from '../types'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -23,15 +23,15 @@ export default function RandomChat() {
   const [matchState, setMatchState] = useState<MatchState>('questionnaire')
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [message, setMessage] = useState('')
-  const [crypto, setCrypto] = useState<CryptoEngine | null>(null)
-  const [partnerKey, setPartnerKey] = useState<string | null>(null)
+  const [crypto, setCrypto] = useState<SecureCryptoEngine | null>(null)
+  const [partnerId, setPartnerId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollIntervalRef = useRef<number | null>(null)
   const timeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (deviceId) {
-      const engine = new CryptoEngine(deviceId)
+      const engine = new SecureCryptoEngine(deviceId)
       engine.init().then(() => setCrypto(engine))
     }
   }, [deviceId])
@@ -52,9 +52,9 @@ export default function RandomChat() {
     }
   }, [])
 
-  // Register WebSocket message handler when we have partnerKey and are in chatting state
+  // Register WebSocket message handler when we have partnerId and are in chatting state
   useEffect(() => {
-    if (partnerKey && currentSessionId && (matchState === 'matched' || matchState === 'chatting')) {
+    if (partnerId && currentSessionId && (matchState === 'matched' || matchState === 'chatting')) {
       wsService.on('message', handleIncomingMessage)
       
       return () => {
@@ -62,7 +62,7 @@ export default function RandomChat() {
         wsService.off('message')
       }
     }
-  }, [partnerKey, currentSessionId, matchState])
+  }, [partnerId, currentSessionId, matchState])
 
   const handleAnswerChange = (questionId: string, answer: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: answer }))
@@ -94,7 +94,11 @@ export default function RandomChat() {
 
             // Fetch partner's key bundle
             const keyBundle = await authService.getKeyBundle(status.pair_id)
-            setPartnerKey(keyBundle.identity_pub)
+            setPartnerId(status.pair_id)
+            
+            // Initialize session with partner's public key
+            await crypto.initializeSession(status.pair_id, keyBundle.identity_pub)
+            
             createSession(status.pair_id, keyBundle.identity_pub, true)
             setMatchState('matched')
 
@@ -144,14 +148,14 @@ export default function RandomChat() {
 
   const handleIncomingMessage = async (data: any) => {
     console.log('Received message:', data)
-    if (!crypto || !partnerKey || !currentSessionId) {
-      console.log('Missing dependencies:', { crypto: !!crypto, partnerKey: !!partnerKey, currentSessionId })
+    if (!crypto || !partnerId || !currentSessionId) {
+      console.log('Missing dependencies:', { crypto: !!crypto, partnerId: !!partnerId, currentSessionId })
       return
     }
 
     try {
       // Message from backend_new format: { type: 'message', from: userId, payload: encrypted, timestamp }
-      const decrypted = await crypto.decryptMessage(data.payload, partnerKey)
+      const decrypted = await crypto.decryptMessage(data.payload, partnerId)
       console.log('Decrypted message:', decrypted)
       const msg: Message = {
         id: uuidv4(),
@@ -168,10 +172,10 @@ export default function RandomChat() {
   }
 
   const handleSendMessage = async () => {
-    if (!message.trim() || !crypto || !partnerKey || !currentSessionId || !userId) return
+    if (!message.trim() || !crypto || !partnerId || !currentSessionId || !userId) return
 
     try {
-      const encrypted = await crypto.encryptMessage(message, partnerKey)
+      const encrypted = await crypto.encryptMessage(message, partnerId)
 
       const msg: Message = {
         id: uuidv4(),

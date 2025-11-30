@@ -5,7 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useAuthStore } from '../stores/authStore'
 import { authService } from '../services/authService'
-import { CryptoEngine } from '../crypto/engine'
+import { SecureCryptoEngine } from '../crypto/engineSecure'
 import { v4 as uuidv4 } from 'uuid'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -84,7 +84,7 @@ export default function Register() {
       setStep('uploading-keys')
 
       // Step 2: Generate keys locally
-      const crypto = new CryptoEngine(deviceId)
+      const crypto = new SecureCryptoEngine(deviceId)
       await crypto.init()
       const identityPubKey = crypto.getPublicIdentityKey()
       const signingPubKey = crypto.getPublicSigningKey()

@@ -3,6 +3,7 @@ package services
 import (
 	"crypto/rand"
 	"encoding/base32"
+	"log"
 	"time"
 
 	"github.com/gofrs/uuid"
@@ -52,6 +53,12 @@ func (s *OTPService) CreateRegistrationSession(identifier string) (string, error
 	if err := s.DB.Create(sess).Error; err != nil {
 		return "", err
 	}
+
+	// Verify insert worked
+	var count int64
+	s.DB.Model(&models.RegistrationSession{}).Where("identifier = ?", identifier).Count(&count)
+	log.Printf("DEBUG: Inserted session for %s, count in DB: %d", identifier, count)
+
 	// TODO: send OTP via SMS/Email provider in production
 	return otp, nil
 }

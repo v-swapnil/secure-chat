@@ -1,5 +1,3 @@
-import type { EncryptedMessage } from '../types'
-
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
 
 export class WebSocketService {

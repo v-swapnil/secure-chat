@@ -15,9 +15,11 @@ export interface StoredPreKey {
 }
 
 export interface StoredSession {
-  id: string
+  id: string // sessionId
   partnerId: string
-  record: Uint8Array
+  sessionState: string // Serialized SessionState
+  createdAt: number
+  lastUsed: number
 }
 
 export interface StoredMessage {
@@ -38,10 +40,10 @@ class CryptoDatabase extends Dexie {
 
   constructor() {
     super('SecureChatDB')
-    this.version(1).stores({
+    this.version(2).stores({
       identityKeys: 'id',
       preKeys: 'id',
-      sessions: 'id, partnerId',
+      sessions: 'id, partnerId, lastUsed',
       messages: 'id, sessionId, timestamp',
     })
   }

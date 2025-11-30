@@ -17,6 +17,7 @@ func main() {
 	cfg := config.Load()
 	logger := log.New(os.Stdout, "", log.LstdFlags)
 	logger.Println("starting secure-chat backend")
+	logger.Println("cfg.DatabaseDSN", cfg.DatabaseDSN)
 
 	gormDB, err := db.Connect(cfg.DatabaseDSN)
 	if err != nil {
