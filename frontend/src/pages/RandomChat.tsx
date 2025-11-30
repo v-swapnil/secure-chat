@@ -52,6 +52,18 @@ export default function RandomChat() {
     }
   }, [])
 
+  // Register WebSocket message handler when we have partnerKey and are in chatting state
+  useEffect(() => {
+    if (partnerKey && currentSessionId && (matchState === 'matched' || matchState === 'chatting')) {
+      wsService.on('message', handleIncomingMessage)
+      
+      return () => {
+        // Clean up handler when component unmounts or partner changes
+        wsService.off('message')
+      }
+    }
+  }, [partnerKey, currentSessionId, matchState])
+
   const handleAnswerChange = (questionId: string, answer: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: answer }))
   }
@@ -64,7 +76,6 @@ export default function RandomChat() {
       if (!wsService.isConnected()) {
         await wsService.connect(token, deviceId)
       }
-      wsService.on('message', handleIncomingMessage)
       
       // Use simple tag hash for matching
       const tagHashes = hashQuestionnaireAnswers(answers)
@@ -132,11 +143,16 @@ export default function RandomChat() {
   }
 
   const handleIncomingMessage = async (data: any) => {
-    if (!crypto || !partnerKey || !currentSessionId) return
+    console.log('Received message:', data)
+    if (!crypto || !partnerKey || !currentSessionId) {
+      console.log('Missing dependencies:', { crypto: !!crypto, partnerKey: !!partnerKey, currentSessionId })
+      return
+    }
 
     try {
       // Message from backend_new format: { type: 'message', from: userId, payload: encrypted, timestamp }
       const decrypted = await crypto.decryptMessage(data.payload, partnerKey)
+      console.log('Decrypted message:', decrypted)
       const msg: Message = {
         id: uuidv4(),
         from: data.from,
