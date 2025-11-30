@@ -2,8 +2,9 @@ package api
 
 import (
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
-	"encoding/json"
+	"encoding/pem"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -113,38 +114,27 @@ func (a *App) PreKeysUploadHandler(c *fiber.Ctx) error {
 		return err
 	}
 
-	var req struct {
-		EncryptedB64 string `json:"encrypted_blob"`
-	}
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
-	}
-
-	data, err := base64.StdEncoding.DecodeString(req.EncryptedB64)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid base64"})
-	}
-
-	plaintext, err := utils.RSADecrypt(a.ServerPriv, data)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "decryption failed"})
-	}
-
 	var payload struct {
 		IdentityPub     string   `json:"identity_pub"`
+		SigningPub      string   `json:"signing_pub"`
 		SignedPreKey    string   `json:"signed_prekey"`
 		SignedPreKeySig string   `json:"signed_prekey_signature"`
 		OneTimePreKeys  []string `json:"one_time_prekeys"`
 		DeviceID        string   `json:"device_id"`
 		DevicePubKey    string   `json:"device_pubkey"`
 	}
-	if err := json.Unmarshal(plaintext, &payload); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid payload"})
+	if err := c.BodyParser(&payload); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request"})
 	}
 
 	identityPub, err := base64.StdEncoding.DecodeString(payload.IdentityPub)
 	if err != nil || len(identityPub) != 32 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid identity_pub"})
+	}
+
+	signingPub, err := base64.StdEncoding.DecodeString(payload.SigningPub)
+	if err != nil || len(signingPub) != 32 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid signing_pub"})
 	}
 
 	a.DB.Model(&models.User{}).Where("id = ?", userID).Updates(map[string]interface{}{"identity_pub_key": identityPub})
@@ -159,7 +149,7 @@ func (a *App) PreKeysUploadHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid signed_prekey"})
 	}
 
-	if !utils.VerifyEd25519(identityPub, spkBytes, sigBytes) {
+	if !utils.VerifyEd25519(signingPub, spkBytes, sigBytes) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "signature verification failed"})
 	}
 
@@ -200,4 +190,20 @@ func (a *App) PreKeysUploadHandler(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{"status": "ok"})
+}
+
+// GET /auth/server-pubkey
+func (a *App) ServerPublicKeyHandler(c *fiber.Ctx) error {
+	// Export in PKIX/SPKI format for Web Crypto API
+	pubBytes, err := x509.MarshalPKIXPublicKey(&a.ServerPriv.PublicKey)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to marshal public key"})
+	}
+	pubPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: pubBytes,
+	})
+	return c.JSON(fiber.Map{
+		"public_key": string(pubPEM),
+	})
 }

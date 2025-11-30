@@ -13,17 +13,11 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 const registerSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
-    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-    .regex(/[0-9]/, 'Password must contain at least one number'),
+  identifier: z.string().min(3, 'Identifier must be at least 3 characters'),
 })
 
 const verifySchema = z.object({
-  code: z.string().length(6, 'Verification code must be 6 digits'),
+  code: z.string().length(6, 'OTP code must be 6 characters'),
 })
 
 type RegisterFormData = z.infer<typeof registerSchema>
@@ -41,9 +35,8 @@ export default function Register() {
     localStorage.setItem('device_id', newId)
     return newId
   })
-  const [registeredEmail, setRegisteredEmail] = useState('')
-  const [registeredPassword, setRegisteredPassword] = useState('')
-  const [tempToken, setTempToken] = useState('')
+  const [registeredIdentifier, setRegisteredIdentifier] = useState('')
+  const [otpCode, setOtpCode] = useState('')
   const navigate = useNavigate()
   const { login } = useAuthStore()
 
@@ -68,14 +61,11 @@ export default function Register() {
     setError('')
 
     try {
-      // Step 1: Register with email/password only (no keys yet)
-      await authService.register({
-        email: data.email,
-        password: data.password,
-      })
-
-      setRegisteredEmail(data.email)
-      setRegisteredPassword(data.password)
+      // Step 1: Register with identifier and get OTP
+      const response = await authService.register(data.identifier)
+      
+      setRegisteredIdentifier(data.identifier)
+      setOtpCode(response.otp) // In dev, we get OTP back
       setStep('verify')
     } catch (err: any) {
       console.error('Registration error:', err)
@@ -91,39 +81,49 @@ export default function Register() {
     setError('')
 
     try {
-      // Step 2: Verify OTP and get temp_token
-      const verifyResponse = await authService.verify(data.code, registeredEmail)
-      setTempToken(verifyResponse.temp_token)
       setStep('uploading-keys')
 
-      // Step 3: Generate keys locally (NEVER sent to server except public keys)
+      // Step 2: Generate keys locally
       const crypto = new CryptoEngine(deviceId)
       await crypto.init()
-      const identityKey = crypto.getPublicIdentityKey()
-      const signedPreKey = await crypto.generateSignedPreKey()
-      const oneTimePreKeys = await crypto.generatePreKeys(50)
+      const identityPubKey = crypto.getPublicIdentityKey()
+      const signingPubKey = crypto.getPublicSigningKey()
 
-      // Step 4: Complete registration with temp_token + public keys
-      const response = await authService.completeRegistration({
-        tempToken: verifyResponse.temp_token,
-        identityKey,
-        deviceId,
-        registrationId: Math.floor(Math.random() * 1000000),
+      // Step 3: Verify 2FA with OTP and identity public key
+      const verifyResponse = await authService.verify2FA({
+        identifier: registeredIdentifier,
+        otp: data.code,
+        identity_pubkey: identityPubKey,
       })
 
       // Store token and user_id
-      localStorage.setItem('auth_token', response.token)
-      localStorage.setItem('user_id', response.userId)
+      localStorage.setItem('auth_token', verifyResponse.token)
+      localStorage.setItem('user_id', verifyResponse.user_id)
 
-      // Upload prekeys with authentication
-      await authService.uploadPreKeys(deviceId, signedPreKey, oneTimePreKeys)
+      // Step 4: Generate and upload prekeys
+      const signedPreKey = await crypto.generateSignedPreKey()
+      const oneTimePreKeys = await crypto.generatePreKeys(50)
 
-      login(response.userId, response.token, identityKey, deviceId)
+      // Create bundle for server
+      const bundle = {
+        identity_pub: identityPubKey,
+        signing_pub: signingPubKey,
+        signed_prekey: signedPreKey.publicKey,
+        signed_prekey_signature: signedPreKey.signature,
+        one_time_prekeys: oneTimePreKeys.map(k => k.publicKey),
+        device_id: deviceId,
+        device_pubkey: identityPubKey, // Using identity key as device key for now
+      }
+      
+      await authService.uploadPreKeys(bundle)
+
+      login(verifyResponse.user_id, verifyResponse.token, identityPubKey, deviceId)
       navigate('/dashboard')
     } catch (err: any) {
       console.error('Verification error:', err)
       const errorMsg = err.response?.data?.error || err.message || 'Verification failed'
       setError(`Verification failed: ${errorMsg}`)
+      setStep('verify') // Go back to verify step on error
     } finally {
       setLoading(false)
     }
@@ -149,35 +149,20 @@ export default function Register() {
           ) : step === 'register' ? (
             <form onSubmit={handleRegisterSubmit(onRegisterSubmit)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="identifier">Username or Email</Label>
                 <Input
-                  id="email"
+                  id="identifier"
                   type="text"
-                  placeholder="you@example.com"
+                  placeholder="username or you@example.com"
                   autoComplete="off"
-                  className={registerErrors.email ? 'border-destructive' : ''}
-                  {...registerForm('email')}
+                  className={registerErrors.identifier ? 'border-destructive' : ''}
+                  {...registerForm('identifier')}
                 />
-                {registerErrors.email && (
-                  <p className="text-sm text-destructive">{registerErrors.email.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  autoComplete="new-password"
-                  className={registerErrors.password ? 'border-destructive' : ''}
-                  {...registerForm('password')}
-                />
-                {registerErrors.password && (
-                  <p className="text-sm text-destructive">{registerErrors.password.message}</p>
+                {registerErrors.identifier && (
+                  <p className="text-sm text-destructive">{registerErrors.identifier.message}</p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Must be 8+ characters with uppercase, lowercase, and number
+                  This will be used to identify your account
                 </p>
               </div>
 
@@ -202,8 +187,13 @@ export default function Register() {
             <form onSubmit={handleVerifySubmit(onVerifySubmit)} className="space-y-4">
               <div className="bg-primary/10 p-4 rounded-md mb-4">
                 <p className="text-sm">
-                  A verification code has been sent to <strong>{registeredEmail}</strong>
+                  A verification code has been sent to <strong>{registeredIdentifier}</strong>
                 </p>
+                {otpCode && (
+                  <p className="text-sm mt-2 font-mono bg-yellow-100 p-2 rounded">
+                    Development OTP: <strong>{otpCode}</strong>
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

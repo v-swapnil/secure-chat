@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/websocket/v2"
 	"github.com/gofrs/uuid"
+	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/securechat/backend/internal/services"
 )
@@ -19,10 +20,41 @@ func (a *App) WebSocketHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUpgradeRequired).JSON(fiber.Map{"error": "websocket upgrade required"})
 	}
 
-	// Get user_id from context (set by auth middleware)
+	// Try to get user_id from context (if auth middleware was used)
 	userID, err := GetUserID(c)
 	if err != nil {
-		return err
+		// If not from middleware, try token from query param
+		tokenStr := c.Query("token")
+		if tokenStr == "" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "missing token"})
+		}
+
+		// Parse token manually
+		token, parseErr := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fiber.ErrUnauthorized
+			}
+			return []byte(a.Cfg.JWTSigningKey), nil
+		})
+
+		if parseErr != nil || !token.Valid {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token"})
+		}
+
+		claims, ok := token.Claims.(jwt.MapClaims)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token claims"})
+		}
+
+		userIDStr, ok := claims["user_id"].(string)
+		if !ok {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid user_id in token"})
+		}
+
+		userID, parseErr = uuid.FromString(userIDStr)
+		if parseErr != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid user_id format"})
+		}
 	}
 
 	return websocket.New(func(ws *websocket.Conn) {

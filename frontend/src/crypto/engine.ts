@@ -14,6 +14,7 @@ export interface KeyPair {
 
 export class CryptoEngine {
   private identityKeyPair: KeyPair | null = null
+  private signingKeyPair: nacl.SignKeyPair | null = null
   private deviceId: string
 
   constructor(deviceId: string) {
@@ -40,6 +41,23 @@ export class CryptoEngine {
         privateKey: this.identityKeyPair.secretKey,
       })
     }
+    
+    // Also initialize signing key for signatures
+    const signingKeyId = `signing_${this.deviceId}`
+    const storedSigning = await db.identityKeys.get(signingKeyId)
+    if (storedSigning) {
+      this.signingKeyPair = {
+        publicKey: storedSigning.publicKey,
+        secretKey: storedSigning.privateKey,
+      }
+    } else {
+      this.signingKeyPair = nacl.sign.keyPair()
+      await db.identityKeys.put({
+        id: signingKeyId,
+        publicKey: this.signingKeyPair.publicKey,
+        privateKey: this.signingKeyPair.secretKey,
+      })
+    }
   }
 
   /**
@@ -48,6 +66,14 @@ export class CryptoEngine {
   getPublicIdentityKey(): string {
     if (!this.identityKeyPair) throw new Error('Identity key not initialized')
     return encodeBase64(this.identityKeyPair.publicKey)
+  }
+
+  /**
+   * Get public signing key as base64
+   */
+  getPublicSigningKey(): string {
+    if (!this.signingKeyPair) throw new Error('Signing key not initialized')
+    return encodeBase64(this.signingKeyPair.publicKey)
   }
 
   /**
@@ -86,14 +112,15 @@ export class CryptoEngine {
    */
   async generateSignedPreKey(): Promise<any> {
     if (!this.identityKeyPair) throw new Error('Identity key not initialized')
+    if (!this.signingKeyPair) throw new Error('Signing key not initialized')
     
     const keyPair = nacl.box.keyPair()
     const keyId = `${this.deviceId}_signed`
     
-    // Sign the public key with identity private key
+    // Sign the public key with signing private key
     const signature = nacl.sign.detached(
       keyPair.publicKey,
-      this.identityKeyPair.secretKey
+      this.signingKeyPair.secretKey
     )
     
     await db.preKeys.put({

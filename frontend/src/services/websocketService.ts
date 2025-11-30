@@ -1,6 +1,6 @@
 import type { EncryptedMessage } from '../types'
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080'
+const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8081'
 
 export class WebSocketService {
   private ws: WebSocket | null = null
@@ -9,10 +9,14 @@ export class WebSocketService {
   private reconnectDelay = 1000
   private messageHandlers: Map<string, (message: any) => void> = new Map()
 
-  connect(userId: string, token: string): Promise<void> {
+  connect(token: string, deviceId: string = 'default'): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.ws = new WebSocket(`${WS_URL}/ws?user_id=${userId}&token=${token}`)
+        // Backend expects JWT token in Authorization header via WebSocket
+        // But WebSocket doesn't support custom headers, so we need to upgrade the HTTP request first
+        // For now, we'll rely on the auth middleware checking query params or upgrade later
+        const wsUrl = WS_URL.replace('http://', 'ws://').replace('https://', 'wss://')
+        this.ws = new WebSocket(`${wsUrl}/api/ws?device_id=${deviceId}&token=${token}`)
 
         this.ws.onopen = () => {
           console.log('WebSocket connected')
@@ -36,7 +40,7 @@ export class WebSocketService {
 
         this.ws.onclose = () => {
           console.log('WebSocket closed')
-          this.attemptReconnect(userId, token)
+          this.attemptReconnect(token, deviceId)
         }
       } catch (error) {
         reject(error)
@@ -44,12 +48,12 @@ export class WebSocketService {
     })
   }
 
-  private attemptReconnect(userId: string, token: string) {
+  private attemptReconnect(token: string, deviceId: string) {
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++
       console.log(`Reconnecting... Attempt ${this.reconnectAttempts}`)
       setTimeout(() => {
-        this.connect(userId, token).catch(console.error)
+        this.connect(token, deviceId).catch(console.error)
       }, this.reconnectDelay * this.reconnectAttempts)
     }
   }
@@ -69,12 +73,20 @@ export class WebSocketService {
     this.messageHandlers.delete(type)
   }
 
-  send(message: EncryptedMessage) {
+  send(message: any) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message))
     } else {
       console.error('WebSocket is not connected')
     }
+  }
+
+  sendMessage(to: string, payload: string) {
+    this.send({
+      type: 'message',
+      to: to,
+      payload: payload,
+    })
   }
 
   disconnect() {

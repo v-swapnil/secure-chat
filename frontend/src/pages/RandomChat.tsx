@@ -46,27 +46,31 @@ export default function RandomChat() {
     if (!crypto || !userId || !token) return
 
     try {
-      const categoryTags = hashQuestionnaireAnswers(answers)
-      const ephemeralKeyPair = crypto.generateEphemeralKeyPair()
-      const ephemeralIdentityKey = btoa(String.fromCharCode(...ephemeralKeyPair.publicKey))
-      const ephemeralSignedPreKey = ephemeralIdentityKey // Simplified
-
-      await authService.joinMatchQueue(categoryTags, ephemeralIdentityKey, ephemeralSignedPreKey)
+      // Use simple tag hash for matching
+      const tagHashes = hashQuestionnaireAnswers(answers)
+      const tagHash = tagHashes.join(',') // Combine into single string
+      
+      await authService.joinMatchQueue(tagHash)
       setMatchState('searching')
 
       // Poll for match
       const pollInterval = setInterval(async () => {
         try {
           const status = await authService.getMatchStatus()
-          if (status.matched) {
+          if (status.status === 'matched' && status.pair_id) {
             clearInterval(pollInterval)
-            setPartnerKey(status.partnerEphemeralKey)
-            createSession(status.partnerAnonymousId, status.partnerEphemeralKey, true)
+            
+            // Fetch partner's key bundle
+            const keyBundle = await authService.getKeyBundle(status.pair_id)
+            setPartnerKey(keyBundle.identity_pub)
+            createSession(status.pair_id, keyBundle.identity_pub, true)
             setMatchState('matched')
 
             // Connect WebSocket
-            await wsService.connect(userId, token)
-            wsService.on('encrypted_message', handleIncomingMessage)
+            if (token && deviceId) {
+              await wsService.connect(token, deviceId)
+              wsService.on('message', handleIncomingMessage)
+            }
             
             setTimeout(() => setMatchState('chatting'), 2000)
           }
@@ -91,13 +95,14 @@ export default function RandomChat() {
     if (!crypto || !partnerKey || !currentSessionId) return
 
     try {
-      const decrypted = await crypto.decryptMessage(data.payload.ciphertext, partnerKey)
+      // Message from backend_new format: { type: 'message', from: userId, payload: encrypted, timestamp }
+      const decrypted = await crypto.decryptMessage(data.payload, partnerKey)
       const msg: Message = {
         id: uuidv4(),
         from: data.from,
         to: userId!,
         content: decrypted,
-        timestamp: Date.now(),
+        timestamp: data.timestamp || Date.now(),
         type: 'text',
       }
       addMessage(currentSessionId, msg)
@@ -123,12 +128,8 @@ export default function RandomChat() {
       
       addMessage(currentSessionId, msg)
 
-      wsService.send({
-        from: userId,
-        to: currentSessionId,
-        type: 'encrypted_message',
-        payload: { ciphertext: encrypted },
-      })
+      // Send via WebSocket using new format
+      wsService.sendMessage(currentSessionId, encrypted)
 
       setMessage('')
     } catch (error) {

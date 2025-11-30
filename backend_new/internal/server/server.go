@@ -56,7 +56,7 @@ func NewServer(cfg *config.Config, db *gorm.DB, otpSvc *services.OTPService, pre
 	app.Use(recover.New())
 	app.Use(requestid.New())
 	app.Use(cors.New(cors.Config{
-		AllowOrigins:     "http://localhost:5173,http://localhost:3000",
+		AllowOrigins:     "http://localhost:5173,http://localhost:3000,http://localhost:3001",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS",
 		AllowCredentials: true,
@@ -85,6 +85,7 @@ func (s *Server) registerRoutes() {
 	// Public routes
 	s.app.Post("/auth/register", s.api.RegisterHandler)
 	s.app.Post("/auth/verify-2fa", s.api.Verify2FAHandler)
+	s.app.Get("/auth/server-pubkey", s.api.ServerPublicKeyHandler)
 	s.app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"status":    "ok",
