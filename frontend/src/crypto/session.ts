@@ -98,9 +98,9 @@ export function deriveMessageKeys(messageKey: Uint8Array): MessageKeys {
   const hash = nacl.hash(messageKey)
   
   return {
-    encryptKey: hash.slice(0, 32),
-    authKey: hash.slice(32, 64),
-    iv: nacl.randomBytes(24), // Generate fresh IV for each message
+    encryptKey: new Uint8Array(hash.slice(0, 32)),    // Bytes 0-31: Encryption key (32 bytes)
+    authKey: new Uint8Array(hash.slice(32, 64)),      // Bytes 32-63: Auth key (32 bytes)  
+    iv: new Uint8Array(hash.slice(40, 64)),           // Bytes 40-63: IV (24 bytes, overlaps with authKey)
   }
 }
 

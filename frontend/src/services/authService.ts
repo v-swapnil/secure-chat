@@ -44,6 +44,11 @@ export interface KeyBundleResponse {
 }
 
 export const authService = {
+  async checkUsername(username: string): Promise<{ available: boolean; message: string }> {
+    const response = await api.get(`/auth/check-username?username=${encodeURIComponent(username)}`)
+    return response.data
+  },
+
   async register(identifier: string): Promise<{ status: string; otp: string }> {
     const response = await api.post('/auth/register', { identifier })
     return response.data

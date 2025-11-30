@@ -27,6 +27,23 @@ type App struct {
 	Cfg        *config.Config
 }
 
+// GET /auth/check-username?username=xxx
+func (a *App) CheckUsernameHandler(c *fiber.Ctx) error {
+	username := c.Query("username")
+	if username == "" || len(username) < 3 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "username must be at least 3 characters"})
+	}
+
+	var user models.User
+	if err := a.DB.Where("identifier = ?", username).First(&user).Error; err == nil {
+		return c.JSON(fiber.Map{"available": false, "message": "Username already taken"})
+	} else if err != gorm.ErrRecordNotFound {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "database error"})
+	}
+
+	return c.JSON(fiber.Map{"available": true, "message": "Username is available"})
+}
+
 // POST /auth/register
 func (a *App) RegisterHandler(c *fiber.Ctx) error {
 	var req struct {
@@ -38,6 +55,15 @@ func (a *App) RegisterHandler(c *fiber.Ctx) error {
 	if req.Identifier == "" || len(req.Identifier) < 3 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "identifier must be at least 3 characters"})
 	}
+
+	// Check if user already exists
+	var existingUser models.User
+	if err := a.DB.Where("identifier = ?", req.Identifier).First(&existingUser).Error; err == nil {
+		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "username already taken"})
+	} else if err != gorm.ErrRecordNotFound {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "database error"})
+	}
+
 	otp, err := a.OTPService.CreateRegistrationSession(req.Identifier)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create session"})

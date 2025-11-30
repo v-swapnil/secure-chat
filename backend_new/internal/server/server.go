@@ -83,6 +83,7 @@ func NewServer(cfg *config.Config, db *gorm.DB, otpSvc *services.OTPService, pre
 
 func (s *Server) registerRoutes() {
 	// Public routes
+	s.app.Get("/auth/check-username", s.api.CheckUsernameHandler)
 	s.app.Post("/auth/register", s.api.RegisterHandler)
 	s.app.Post("/auth/verify-2fa", s.api.Verify2FAHandler)
 	s.app.Get("/auth/server-pubkey", s.api.ServerPublicKeyHandler)

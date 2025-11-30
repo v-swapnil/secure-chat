@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -27,6 +27,9 @@ export default function Register() {
   const [step, setStep] = useState<'register' | 'verify' | 'uploading-keys'>('register')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle')
+  const [usernameError, setUsernameError] = useState('')
+  const debounceTimerRef = useRef<number | null>(null)
   const [deviceId] = useState(() => {
     // Check localStorage first, generate if not exists
     const stored = localStorage.getItem('device_id')
@@ -44,9 +47,52 @@ export default function Register() {
     register: registerForm,
     handleSubmit: handleRegisterSubmit,
     formState: { errors: registerErrors },
+    watch,
   } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
   })
+
+  const usernameValue = watch('identifier')
+
+  // Debounced username validation
+  useEffect(() => {
+    if (!usernameValue || usernameValue.length < 3) {
+      setUsernameStatus('idle')
+      setUsernameError('')
+      return
+    }
+
+    // Clear existing timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+
+    setUsernameStatus('checking')
+
+    // Set new timer
+    debounceTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await authService.checkUsername(usernameValue)
+        if (result.available) {
+          setUsernameStatus('available')
+          setUsernameError('')
+        } else {
+          setUsernameStatus('taken')
+          setUsernameError(result.message || 'Username already taken')
+        }
+      } catch (err: any) {
+        console.error('Username check error:', err)
+        setUsernameStatus('idle')
+        setUsernameError('')
+      }
+    }, 500) // 500ms debounce
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, [usernameValue])
 
   const {
     register: verifyForm,
@@ -70,7 +116,13 @@ export default function Register() {
     } catch (err: any) {
       console.error('Registration error:', err)
       const errorMsg = err.response?.data?.error || err.message || 'Registration failed'
-      setError(`Registration failed: ${errorMsg}`)
+      
+      // Handle specific error for duplicate username
+      if (err.response?.status === 409 || errorMsg.includes('already taken')) {
+        setError('This username is already taken. Please choose a different one.')
+      } else {
+        setError(`Registration failed: ${errorMsg}`)
+      }
     } finally {
       setLoading(false)
     }
@@ -149,20 +201,49 @@ export default function Register() {
           ) : step === 'register' ? (
             <form onSubmit={handleRegisterSubmit(onRegisterSubmit)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="identifier">Username or Email</Label>
-                <Input
-                  id="identifier"
-                  type="text"
-                  placeholder="username or you@example.com"
-                  autoComplete="off"
-                  className={registerErrors.identifier ? 'border-destructive' : ''}
-                  {...registerForm('identifier')}
-                />
+                <Label htmlFor="identifier">Username</Label>
+                <div className="relative">
+                  <Input
+                    id="identifier"
+                    type="text"
+                    placeholder="username"
+                    autoComplete="off"
+                    className={`${
+                      registerErrors.identifier || usernameStatus === 'taken'
+                        ? 'border-destructive'
+                        : usernameStatus === 'available'
+                        ? 'border-green-500'
+                        : ''
+                    }`}
+                    {...registerForm('identifier')}
+                  />
+                  {usernameStatus === 'checking' && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                    </div>
+                  )}
+                  {usernameStatus === 'available' && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-green-500">
+                      ✓
+                    </div>
+                  )}
+                  {usernameStatus === 'taken' && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-destructive">
+                      ✗
+                    </div>
+                  )}
+                </div>
                 {registerErrors.identifier && (
                   <p className="text-sm text-destructive">{registerErrors.identifier.message}</p>
                 )}
+                {usernameStatus === 'taken' && usernameError && (
+                  <p className="text-sm text-destructive">{usernameError}</p>
+                )}
+                {usernameStatus === 'available' && (
+                  <p className="text-sm text-green-600">Username is available</p>
+                )}
                 <p className="text-xs text-muted-foreground">
-                  This will be used to identify your account
+                  Choose a unique username (at least 3 characters)
                 </p>
               </div>
 
@@ -172,7 +253,12 @@ export default function Register() {
                 </div>
               )}
 
-              <Button type="submit" className="w-full" size="lg" disabled={loading}>
+              <Button 
+                type="submit" 
+                className="w-full" 
+                size="lg" 
+                disabled={loading || usernameStatus === 'checking' || usernameStatus === 'taken'}
+              >
                 {loading ? 'Creating Account...' : 'Create Account'}
               </Button>
 
