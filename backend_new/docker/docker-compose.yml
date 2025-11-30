@@ -1,0 +1,32 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: example
+      POSTGRES_DB: secure_chat
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - appnet
+
+  app:
+    build: .
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_DSN: host=postgres user=appuser password=example dbname=secure_chat sslmode=disable
+      SERVER_RSA_PRIV_PATH: /run/secrets/server_rsa_priv.pem
+      JWT_SIGNING_KEY: supersecretjwtkey
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    networks:
+      - appnet
+
+volumes:
+  db-data:
+
+networks:
+  appnet:
