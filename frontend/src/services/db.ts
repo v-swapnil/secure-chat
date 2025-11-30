@@ -1,0 +1,50 @@
+import Dexie, { Table } from 'dexie'
+
+export interface StoredIdentityKey {
+  id: string
+  publicKey: Uint8Array
+  privateKey: Uint8Array
+}
+
+export interface StoredPreKey {
+  id: number
+  keyPair: {
+    pubKey: Uint8Array
+    privKey: Uint8Array
+  }
+}
+
+export interface StoredSession {
+  id: string
+  partnerId: string
+  record: Uint8Array
+}
+
+export interface StoredMessage {
+  id: string
+  sessionId: string
+  from: string
+  to: string
+  content: string
+  timestamp: number
+  type: 'text' | 'system'
+}
+
+class CryptoDatabase extends Dexie {
+  identityKeys!: Table<StoredIdentityKey>
+  preKeys!: Table<StoredPreKey>
+  sessions!: Table<StoredSession>
+  messages!: Table<StoredMessage>
+
+  constructor() {
+    super('SecureChatDB')
+    this.version(1).stores({
+      identityKeys: 'id',
+      preKeys: 'id',
+      sessions: 'id, partnerId',
+      messages: 'id, sessionId, timestamp',
+    })
+  }
+}
+
+export const db = new CryptoDatabase()
