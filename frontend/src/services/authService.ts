@@ -81,7 +81,7 @@ export const authService = {
   },
 
   async leaveMatchQueue(): Promise<void> {
-    // TODO: implement leave queue endpoint if needed
+    await api.post('/api/match/leave')
   },
 
   // Legacy compatibility

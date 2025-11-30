@@ -57,6 +57,9 @@ func (a *App) WebSocketHandler(c *fiber.Ctx) error {
 		}
 	}
 
+	// Read device_id before WebSocket upgrade
+	deviceID := c.Query("device_id", "default")
+
 	return websocket.New(func(ws *websocket.Conn) {
 		defer func() {
 			a.Hub.Unregister(userID)
@@ -66,7 +69,7 @@ func (a *App) WebSocketHandler(c *fiber.Ctx) error {
 		// Create connection
 		conn := &services.Connection{
 			UserID:   userID,
-			DeviceID: c.Query("device_id", "default"),
+			DeviceID: deviceID,
 			Conn:     ws,
 			Send:     make(chan []byte, 256),
 			LastSeen: time.Now(),

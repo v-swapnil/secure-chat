@@ -130,3 +130,14 @@ func (a *App) GetKeyBundleHandler(c *fiber.Ctx) error {
 		"devices":                 devicesData,
 	})
 }
+
+// POST /api/match/leave
+func (a *App) LeaveMatchQueueHandler(c *fiber.Ctx) error {
+	userID, err := GetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	a.Matchmaker.Leave(userID)
+	return c.JSON(fiber.Map{"status": "left"})
+}

@@ -1,12 +1,30 @@
 import { useNavigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useAuthStore } from '../stores/authStore'
 import { CryptoEngine } from '../crypto/engine'
+import { wsService } from '../services/websocketService'
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const { logout, userId, deviceId } = useAuthStore()
+  const { logout, userId, deviceId, token } = useAuthStore()
+
+  // Connect WebSocket when dashboard loads (user is logged in)
+  useEffect(() => {
+    if (token && deviceId) {
+      // Connect WebSocket
+      wsService.connect(token, deviceId).catch(err => {
+        console.error('Failed to connect WebSocket:', err)
+      })
+    }
+
+    // Cleanup on unmount or page refresh
+    return () => {
+      wsService.disconnect()
+    }
+  }, [token, deviceId])
 
   const handleLogout = async () => {
+    wsService.disconnect()
     if (deviceId) {
       const crypto = new CryptoEngine(deviceId)
       await crypto.clearKeys()

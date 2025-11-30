@@ -26,6 +26,8 @@ export default function RandomChat() {
   const [crypto, setCrypto] = useState<CryptoEngine | null>(null)
   const [partnerKey, setPartnerKey] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const pollIntervalRef = useRef<number | null>(null)
+  const timeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (deviceId) {
@@ -38,41 +40,55 @@ export default function RandomChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [sessions, currentSessionId])
 
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [])
+
   const handleAnswerChange = (questionId: string, answer: string) => {
     setAnswers((prev) => ({ ...prev, [questionId]: answer }))
   }
 
   const handleStartMatching = async () => {
-    if (!crypto || !userId || !token) return
+    if (!crypto || !userId || !token || !deviceId) return
 
     try {
+      // Ensure WebSocket is connected (should already be connected from Dashboard)
+      if (!wsService.isConnected()) {
+        await wsService.connect(token, deviceId)
+      }
+      wsService.on('message', handleIncomingMessage)
+      
       // Use simple tag hash for matching
       const tagHashes = hashQuestionnaireAnswers(answers)
       const tagHash = tagHashes.join(',') // Combine into single string
-      
+
       await authService.joinMatchQueue(tagHash)
       setMatchState('searching')
 
       // Poll for match
-      const pollInterval = setInterval(async () => {
+      pollIntervalRef.current = window.setInterval(async () => {
         try {
           const status = await authService.getMatchStatus()
           if (status.status === 'matched' && status.pair_id) {
-            clearInterval(pollInterval)
-            
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
+            if (timeoutRef.current) clearTimeout(timeoutRef.current)
+
             // Fetch partner's key bundle
             const keyBundle = await authService.getKeyBundle(status.pair_id)
             setPartnerKey(keyBundle.identity_pub)
             createSession(status.pair_id, keyBundle.identity_pub, true)
             setMatchState('matched')
 
-            // Connect WebSocket
-            if (token && deviceId) {
-              await wsService.connect(token, deviceId)
-              wsService.on('message', handleIncomingMessage)
-            }
-            
-            setTimeout(() => setMatchState('chatting'), 2000)
+            // Transition to chatting immediately
+            setTimeout(() => setMatchState('chatting'), 1000)
           }
         } catch (error) {
           console.error('Error polling match status:', error)
@@ -80,14 +96,38 @@ export default function RandomChat() {
       }, 2000)
 
       // Stop polling after 60 seconds
-      setTimeout(() => {
-        clearInterval(pollInterval)
+      timeoutRef.current = window.setTimeout(() => {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current)
+          pollIntervalRef.current = null
+        }
         if (matchState === 'searching') {
-          setMatchState('questionnaire')
+          handleCancelMatch()
         }
       }, 60000)
     } catch (error) {
       console.error('Failed to join queue:', error)
+    }
+  }
+
+  const handleCancelMatch = async () => {
+    try {
+      // Clear polling
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      
+      // Leave queue on backend
+      await authService.leaveMatchQueue()
+      setMatchState('questionnaire')
+    } catch (error) {
+      console.error('Failed to cancel match:', error)
+      setMatchState('questionnaire')
     }
   }
 
@@ -116,7 +156,7 @@ export default function RandomChat() {
 
     try {
       const encrypted = await crypto.encryptMessage(message, partnerKey)
-      
+
       const msg: Message = {
         id: uuidv4(),
         from: userId,
@@ -125,7 +165,7 @@ export default function RandomChat() {
         timestamp: Date.now(),
         type: 'text',
       }
-      
+
       addMessage(currentSessionId, msg)
 
       // Send via WebSocket using new format
@@ -140,7 +180,9 @@ export default function RandomChat() {
   const handleEndChat = async () => {
     try {
       await authService.leaveMatchQueue()
-      wsService.disconnect()
+      // Don't disconnect WebSocket - keep it alive for the session
+      // Clear message handler for this chat
+      wsService.off('message')
       navigate('/dashboard')
     } catch (error) {
       console.error('Failed to end chat:', error)
@@ -180,11 +222,10 @@ export default function RandomChat() {
                     <button
                       key={option}
                       onClick={() => handleAnswerChange(q.id, option)}
-                      className={`p-3 rounded-lg border-2 transition ${
-                        answers[q.id] === option
+                      className={`p-3 rounded-lg border-2 transition ${answers[q.id] === option
                           ? 'border-primary-500 bg-primary-50 text-primary-700'
                           : 'border-gray-200 hover:border-gray-300'
-                      }`}
+                        }`}
                     >
                       {option}
                     </button>
@@ -214,7 +255,7 @@ export default function RandomChat() {
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Searching for a match...</h2>
           <p className="text-gray-600">This may take a moment</p>
           <button
-            onClick={() => setMatchState('questionnaire')}
+            onClick={handleCancelMatch}
             className="mt-8 px-6 py-2 text-gray-600 hover:text-gray-800 transition"
           >
             Cancel
@@ -271,11 +312,10 @@ export default function RandomChat() {
             className={`flex ${msg.from === userId ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                msg.from === userId
+              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${msg.from === userId
                   ? 'bg-primary-600 text-white'
                   : 'bg-white text-gray-800 shadow'
-              }`}
+                }`}
             >
               <p>{msg.content}</p>
               <span className="text-xs opacity-75">

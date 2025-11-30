@@ -57,3 +57,11 @@ func (h *Hub) SendTo(userID uuid.UUID, payload []byte) bool {
 		return false
 	}
 }
+
+// IsOnline checks if a user has an active WebSocket connection
+func (h *Hub) IsOnline(userID uuid.UUID) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	_, ok := h.connections[userID]
+	return ok
+}

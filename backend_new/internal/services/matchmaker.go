@@ -12,15 +12,17 @@ import (
 
 type Matchmaker struct {
 	DB      *gorm.DB
+	Hub     *Hub
 	queue   chan uuid.UUID
 	mu      sync.Mutex
 	pairing map[uuid.UUID]uuid.UUID
 	waiting map[uuid.UUID]time.Time
 }
 
-func NewMatchmaker(db *gorm.DB) *Matchmaker {
+func NewMatchmaker(db *gorm.DB, hub *Hub) *Matchmaker {
 	return &Matchmaker{
 		DB:      db,
+		Hub:     hub,
 		queue:   make(chan uuid.UUID, 1000),
 		pairing: make(map[uuid.UUID]uuid.UUID),
 		waiting: make(map[uuid.UUID]time.Time),
@@ -63,6 +65,14 @@ func (m *Matchmaker) tryMatch() {
 
 	select {
 	case uid1 = <-m.queue:
+		// Check if first user is online
+		if !m.Hub.IsOnline(uid1) {
+			// User disconnected, skip and remove from waiting
+			m.mu.Lock()
+			delete(m.waiting, uid1)
+			m.mu.Unlock()
+			return
+		}
 		hasFirst = true
 	default:
 		return
@@ -71,6 +81,19 @@ func (m *Matchmaker) tryMatch() {
 	// Try to get second user with timeout
 	select {
 	case uid2 = <-m.queue:
+		// Check if second user is online
+		if !m.Hub.IsOnline(uid2) {
+			// Second user disconnected, requeue first user and skip
+			select {
+			case m.queue <- uid1:
+			default:
+				log.Printf("failed to requeue user %s", uid1)
+			}
+			m.mu.Lock()
+			delete(m.waiting, uid2)
+			m.mu.Unlock()
+			return
+		}
 		hasSecond = true
 	case <-time.After(50 * time.Millisecond):
 		// No second user available, requeue first user
@@ -122,4 +145,15 @@ func (m *Matchmaker) RemovePair(userID uuid.UUID) {
 		delete(m.pairing, userID)
 		log.Printf("removed pairing: %s <-> %s", userID, p)
 	}
+}
+
+// Leave removes a user from the match queue
+func (m *Matchmaker) Leave(userID uuid.UUID) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Remove from waiting map
+	delete(m.waiting, userID)
+	log.Printf("user left queue: %s", userID)
+	// Note: Cannot remove from channel easily, but will be filtered out by IsOnline check
 }

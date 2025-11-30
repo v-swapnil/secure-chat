@@ -93,13 +93,16 @@ func (s *Server) registerRoutes() {
 		})
 	})
 
+	// WebSocket route (handles its own auth via query param)
+	s.app.Get("/api/ws", s.api.WebSocketHandler)
+
 	// Protected routes
 	api := s.app.Group("/api", s.api.AuthMiddleware)
 	api.Post("/keys/prekeys/upload", s.api.PreKeysUploadHandler)
 	api.Post("/match/enqueue", s.api.EnqueueMatchHandler)
+	api.Post("/match/leave", s.api.LeaveMatchQueueHandler)
 	api.Get("/match/status", s.api.MatchStatusHandler)
 	api.Get("/keys/bundle/:user_id", s.api.GetKeyBundleHandler)
-	api.Get("/ws", s.api.WebSocketHandler)
 }
 
 func (s *Server) Start() error {
