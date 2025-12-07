@@ -1,75 +1,59 @@
 package main
 
 import (
+	"context"
 	"log"
-	"net/http"
 	"os"
+	"os/signal"
+	"time"
 
-	"github.com/gorilla/mux"
-	"github.com/joho/godotenv"
-	"github.com/secret-project/backend/internal/api"
-	"github.com/secret-project/backend/internal/db"
-	"github.com/secret-project/backend/internal/websocket"
+	"github.com/securechat/backend/internal/config"
+	"github.com/securechat/backend/internal/db"
+	"github.com/securechat/backend/internal/server"
+	"github.com/securechat/backend/internal/services"
 )
 
 func main() {
-	// Load environment variables
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using system environment variables")
-	}
+	cfg := config.Load()
+	logger := log.New(os.Stdout, "", log.LstdFlags)
+	logger.Println("starting secure-chat backend")
+	logger.Println("cfg.DatabaseDSN", cfg.DatabaseDSN)
 
-	// Initialize database
-	database, err := db.NewDB()
+	gormDB, err := db.Connect(cfg.DatabaseDSN)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer database.Close()
-
-	// Run migrations
-	if err := database.Migrate(); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+		logger.Fatal("db connect:", err)
 	}
 
-	// Initialize WebSocket hub
-	hub := websocket.NewHub()
-	go hub.Run()
+	// initialize services
+	otpSvc := services.NewOTPService(gormDB, cfg)
+	prekeySvc := services.NewPreKeyService(gormDB)
+	hub := services.NewHub()
+	matchmaker := services.NewMatchmaker(gormDB, hub)
 
-	// Setup router
-	router := mux.NewRouter()
+	srv := server.NewServer(cfg, gormDB, otpSvc, prekeySvc, matchmaker, hub)
 
-	// CORS middleware - must be applied before routes
-	router.Use(corsMiddleware)
+	// start matchmaker runner
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go matchmaker.Run(ctx)
 
-	// API routes
-	api.SetupRoutes(router, database, hub)
-
-	// Start server
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	log.Printf("Server starting on port %s...", port)
-	if err := http.ListenAndServe(":"+port, router); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
-	}
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		allowedOrigins := os.Getenv("CORS_ALLOWED_ORIGINS")
-
-		// Set the specific origin from env variable
-		w.Header().Set("Access-Control-Allow-Origin", allowedOrigins)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
-
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
+	// run server
+	go func() {
+		if err := srv.Start(); err != nil {
+			logger.Fatal("server start:", err)
 		}
+	}()
 
-		next.ServeHTTP(w, r)
-	})
+	// graceful shutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
+	<-stop
+
+	logger.Println("shutdown signal received")
+	ctxShutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctxShutdown); err != nil {
+		logger.Fatal("shutdown error:", err)
+	}
+	logger.Println("server stopped")
 }
